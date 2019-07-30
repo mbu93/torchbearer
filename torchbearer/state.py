@@ -223,3 +223,6 @@ MIXUP_LAMBDA = state_key('mixup_lambda')
 
 #: The permutation of input indices for input mixup
 MIXUP_PERMUTATION = state_key('mixup_permutation')
+
+#: The specification on how classes may be returned
+CLASS_TYPE = state_key('class_type')

@@ -1,4 +1,18 @@
+import functools
+import itertools
 import sys
+import warnings
+
+import torch
+import torch.nn
+import torchbearer
+from torch.optim import Optimizer
+from torch.utils.data import DataLoader, TensorDataset
+from torchbearer import State, cite
+from torchbearer.bases import base_closure
+from torchbearer.callbacks import (AggregatePredictions, Callback,
+                                   CallbackList, Tqdm)
+from torchbearer.metrics import MetricList
 
 if sys.version_info[0] < 3:
     import inspect
@@ -10,21 +24,8 @@ else:
     def get_default(fcn, arg):
         return signature(fcn).parameters[arg].default
 
-import functools
-import warnings
-import itertools
 
-import torch
-import torch.nn
-from torch.utils.data import DataLoader, TensorDataset
-from torch.optim import Optimizer
 
-import torchbearer
-from torchbearer import cite
-from torchbearer import State
-from torchbearer.metrics import MetricList
-from torchbearer.callbacks import Callback, CallbackList, Tqdm, AggregatePredictions
-from torchbearer.bases import base_closure
 
 bibtex = """
 @article{2018torchbearer,
@@ -214,6 +215,8 @@ def load_batch_standard(state):
     state[torchbearer.X], state[torchbearer.Y_TRUE] = deep_to(next(state[torchbearer.ITERATOR]),
                                                               state[torchbearer.DEVICE],
                                                               state[torchbearer.DATA_TYPE])
+    if state[torchbearer.CLASS_TYPE] == "input":
+        state[torchbearer.Y_TRUE] = state[torchbearer.X]
 
 
 def load_batch_none(state):
@@ -385,8 +388,10 @@ class Trial(object):
         callbacks (list): The list of :class:`torchbearer.Callback <.Callback>` instances to call during fitting
         verbose (int): Global verbosity .If 2: use tqdm on batch, If 1: use tqdm on epoch, If 0: display no training
             progress
+        class_type (str): The specification of how to return classes from a loader. If set to 'input' return the
+            input tensor as label. This can be used e.g. for training an autoencoder.
     """
-    def __init__(self, model, optimizer=None, criterion=None, metrics=[], callbacks=[], verbose=2):
+    def __init__(self, model, optimizer=None, criterion=None, metrics=[], callbacks=[], verbose=2, class_type="numerical"):
         if criterion is None:
             def criterion(_, __):
                 return torch.zeros(1, device=self.state[torchbearer.DEVICE], dtype=self.state[torchbearer.DATA_TYPE], requires_grad=True)
@@ -416,7 +421,8 @@ class Trial(object):
             torchbearer.VALIDATION_DATA: None,
             torchbearer.TEST_DATA: None,
             torchbearer.INF_TRAIN_LOADING: False,
-            torchbearer.LOADER: None
+            torchbearer.LOADER: None,
+            torchbearer.CLASS_TYPE: class_type
         })
 
         self.state[torchbearer.CALLBACK_LIST].on_init(self.state)
@@ -782,7 +788,7 @@ class Trial(object):
     # Infinite steps and loading
 
     def for_inf_train_steps(self):
-        """Use this trial with an infinite number of training steps (until stopped via STOP_TRAINING flag or similar). 
+        """Use this trial with an infinite number of training steps (until stopped via STOP_TRAINING flag or similar).
         Returns self so that methods can be chained for convenience.
 
         Example: ::
@@ -822,7 +828,7 @@ class Trial(object):
         return self
 
     def for_inf_test_steps(self):
-        """Use this trial with an infinite number of test steps (until stopped via STOP_TRAINING flag or similar). 
+        """Use this trial with an infinite number of test steps (until stopped via STOP_TRAINING flag or similar).
         Returns self so that methods can be chained for convenience.
 
         Example: ::
@@ -868,8 +874,8 @@ class Trial(object):
         return self
 
     def with_inf_train_loader(self):
-        """Use this trial with a training iterator that refreshes when it finishes instead of each epoch. 
-        This allows for setting training steps less than the size of the generator and model will still be trained on 
+        """Use this trial with a training iterator that refreshes when it finishes instead of each epoch.
+        This allows for setting training steps less than the size of the generator and model will still be trained on
         all training samples if enough "epochs" are run.
 
         Example: ::
